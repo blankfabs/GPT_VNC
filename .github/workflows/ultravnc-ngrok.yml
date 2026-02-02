@@ -1,4 +1,4 @@
-name: Windows UltraVNC (ngrok FIXED)
+name: UltraVNC Windows (FINAL FIX)
 
 on:
   workflow_dispatch:
@@ -12,25 +12,26 @@ jobs:
       NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
 
     steps:
-    - name: Download UltraVNC (DIRECT MSI)
+    - name: Download UltraVNC (FULL MSI)
       shell: powershell
       run: |
         $ProgressPreference = 'SilentlyContinue'
         curl.exe -L -o ultravnc.msi `
           https://downloads.sourceforge.net/project/ultravnc/UltraVNC/1.4.3.0/UltraVNC_1_4_3_X64_Setup.msi
-        Write-Output "UltraVNC MSI downloaded"
 
-    - name: Install UltraVNC Server (silent)
+    - name: Install UltraVNC (FULL)
       shell: powershell
       run: |
-        msiexec /i ultravnc.msi /quiet /norestart ADDLOCAL=Server
+        msiexec /i ultravnc.msi /quiet /norestart
 
-    - name: Set UltraVNC password
+    - name: Set UltraVNC password (SAFE)
       shell: powershell
       run: |
-        & "C:\Program Files\uvnc bvba\UltraVNC\setpasswd.exe" 12345678
+        $exe = Get-ChildItem "C:\Program Files" -Recurse -Filter setpasswd.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+        if (-not $exe) { throw "setpasswd.exe not found" }
+        & $exe.FullName 12345678
 
-    - name: Enable clipboard + access
+    - name: Enable clipboard + external access
       shell: powershell
       run: |
         reg add "HKLM\SOFTWARE\uvnc bvba\UltraVNC" /v EnableClipboard /t REG_DWORD /d 1 /f
@@ -39,7 +40,7 @@ jobs:
     - name: Allow VNC through firewall
       shell: powershell
       run: |
-        netsh advfirewall firewall add rule name="UltraVNC TCP 5900" dir=in action=allow protocol=TCP localport=5900
+        netsh advfirewall firewall add rule name="UltraVNC 5900" dir=in action=allow protocol=TCP localport=5900
 
     - name: Start UltraVNC service
       shell: powershell
@@ -57,7 +58,7 @@ jobs:
       run: |
         .\ngrok.exe config add-authtoken "$Env:NGROK_AUTH_TOKEN"
 
-    - name: Start ngrok VNC tunnel
+    - name: Start ngrok TCP tunnel
       shell: powershell
       run: |
         Start-Process -NoNewWindow -FilePath ".\ngrok.exe" -ArgumentList "tcp 5900"
