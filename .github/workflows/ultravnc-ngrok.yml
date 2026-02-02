@@ -11,13 +11,12 @@ jobs:
     steps:
     - name: Set up job
       shell: powershell
-      run: |
-        Write-Host "Starting UltraVNC workflow"
+      run: Write-Host "Starting UltraVNC (service-less)"
 
     # -----------------------------
     # Download UltraVNC FULL MSI
     # -----------------------------
-    - name: Download UltraVNC (FULL MSI)
+    - name: Download UltraVNC
       shell: powershell
       run: |
         Invoke-WebRequest `
@@ -25,16 +24,16 @@ jobs:
           -OutFile ultravnc.msi
 
     # -----------------------------
-    # Install UltraVNC
+    # Install UltraVNC (FILES ONLY)
     # -----------------------------
-    - name: Install UltraVNC (FULL)
+    - name: Install UltraVNC
       shell: powershell
       run: |
         msiexec /i ultravnc.msi /quiet /norestart
 
     # -----------------------------
     # Set UltraVNC password (REGISTRY)
-    # Password = 12345678
+    # password = 12345678
     # -----------------------------
     - name: Set UltraVNC password
       shell: powershell
@@ -42,16 +41,14 @@ jobs:
         reg add "HKLM\SOFTWARE\uvnc bvba\UltraVNC" /v passwd  /t REG_BINARY /d 3132333435363738 /f
         reg add "HKLM\SOFTWARE\uvnc bvba\UltraVNC" /v passwd2 /t REG_BINARY /d 3132333435363738 /f
         reg add "HKLM\SOFTWARE\uvnc bvba\UltraVNC" /v AuthRequired /t REG_DWORD /d 1 /f
-        Write-Host "UltraVNC password set"
 
     # -----------------------------
-    # Enable clipboard & file transfer
+    # Enable clipboard
     # -----------------------------
-    - name: Enable clipboard & access
+    - name: Enable clipboard
       shell: powershell
       run: |
         reg add "HKLM\SOFTWARE\uvnc bvba\UltraVNC" /v EnableClipboard /t REG_DWORD /d 1 /f
-        reg add "HKLM\SOFTWARE\uvnc bvba\UltraVNC" /v EnableFileTransfer /t REG_DWORD /d 1 /f
 
     # -----------------------------
     # Allow VNC through firewall
@@ -62,22 +59,25 @@ jobs:
         netsh advfirewall firewall add rule name="UltraVNC" dir=in action=allow protocol=TCP localport=5900
 
     # -----------------------------
-    # Start UltraVNC service (FIXED)
+    # START ULTRAVNC MANUALLY (KEY FIX)
     # -----------------------------
-    - name: Start UltraVNC service
+    - name: Start UltraVNC server
       shell: powershell
       run: |
-        if (Get-Service -Name uvnc_service -ErrorAction SilentlyContinue) {
-          Start-Service uvnc_service
-          Write-Host "uvnc_service started"
+        $paths = @(
+          "C:\Program Files\uvnc bvba\UltraVNC\winvnc.exe",
+          "C:\Program Files (x86)\uvnc bvba\UltraVNC\winvnc.exe"
+        )
+
+        foreach ($p in $paths) {
+          if (Test-Path $p) {
+            Start-Process $p -ArgumentList "-run" -WindowStyle Hidden
+            Write-Host "UltraVNC started: $p"
+            exit 0
+          }
         }
-        elseif (Get-Service -Name uvnc_server -ErrorAction SilentlyContinue) {
-          Start-Service uvnc_server
-          Write-Host "uvnc_server started"
-        }
-        else {
-          throw "UltraVNC service not found"
-        }
+
+        throw "winvnc.exe not found"
 
     # -----------------------------
     # Download ngrok
@@ -85,9 +85,7 @@ jobs:
     - name: Download ngrok
       shell: powershell
       run: |
-        Invoke-WebRequest `
-          -Uri "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip" `
-          -OutFile ngrok.zip
+        Invoke-WebRequest https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip
         Expand-Archive ngrok.zip -DestinationPath .
 
     # -----------------------------
@@ -103,7 +101,7 @@ jobs:
     # -----------------------------
     # Start ngrok TCP tunnel
     # -----------------------------
-    - name: Start ngrok VNC tunnel
+    - name: Start ngrok TCP tunnel
       shell: powershell
       run: |
         Start-Process -NoNewWindow -FilePath ".\ngrok.exe" -ArgumentList "tcp 5900"
@@ -114,4 +112,4 @@ jobs:
     - name: Keep session alive
       shell: powershell
       run: |
-        while ($true) { Start-Sleep -Seconds 300 }
+        while ($true) { Start-Sleep 300 }
