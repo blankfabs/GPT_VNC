@@ -10,7 +10,9 @@ jobs:
 
     steps:
     - name: Set up job
-      run: echo "Starting UltraVNC workflow"
+      shell: powershell
+      run: |
+        Write-Host "Starting UltraVNC workflow"
 
     # -----------------------------
     # Download UltraVNC FULL MSI
@@ -31,7 +33,8 @@ jobs:
         msiexec /i ultravnc.msi /quiet /norestart
 
     # -----------------------------
-    # Set VNC password (CORRECT WAY)
+    # Set UltraVNC password (REGISTRY)
+    # Password = 12345678
     # -----------------------------
     - name: Set UltraVNC password
       shell: powershell
@@ -39,16 +42,16 @@ jobs:
         reg add "HKLM\SOFTWARE\uvnc bvba\UltraVNC" /v passwd  /t REG_BINARY /d 3132333435363738 /f
         reg add "HKLM\SOFTWARE\uvnc bvba\UltraVNC" /v passwd2 /t REG_BINARY /d 3132333435363738 /f
         reg add "HKLM\SOFTWARE\uvnc bvba\UltraVNC" /v AuthRequired /t REG_DWORD /d 1 /f
-        Write-Host "VNC password set (password = 12345678)"
+        Write-Host "UltraVNC password set"
 
     # -----------------------------
-    # Enable clipboard + remote access
+    # Enable clipboard & file transfer
     # -----------------------------
     - name: Enable clipboard & access
       shell: powershell
       run: |
-        reg add "HKLM\SOFTWARE\uvnc bvba\UltraVNC" /v EnableFileTransfer /t REG_DWORD /d 1 /f
         reg add "HKLM\SOFTWARE\uvnc bvba\UltraVNC" /v EnableClipboard /t REG_DWORD /d 1 /f
+        reg add "HKLM\SOFTWARE\uvnc bvba\UltraVNC" /v EnableFileTransfer /t REG_DWORD /d 1 /f
 
     # -----------------------------
     # Allow VNC through firewall
@@ -59,12 +62,22 @@ jobs:
         netsh advfirewall firewall add rule name="UltraVNC" dir=in action=allow protocol=TCP localport=5900
 
     # -----------------------------
-    # Start UltraVNC service
+    # Start UltraVNC service (FIXED)
     # -----------------------------
     - name: Start UltraVNC service
       shell: powershell
       run: |
-        net start uvnc_service || net start uvnc_server
+        if (Get-Service -Name uvnc_service -ErrorAction SilentlyContinue) {
+          Start-Service uvnc_service
+          Write-Host "uvnc_service started"
+        }
+        elseif (Get-Service -Name uvnc_server -ErrorAction SilentlyContinue) {
+          Start-Service uvnc_server
+          Write-Host "uvnc_server started"
+        }
+        else {
+          throw "UltraVNC service not found"
+        }
 
     # -----------------------------
     # Download ngrok
@@ -72,7 +85,9 @@ jobs:
     - name: Download ngrok
       shell: powershell
       run: |
-        Invoke-WebRequest https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip
+        Invoke-WebRequest `
+          -Uri "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip" `
+          -OutFile ngrok.zip
         Expand-Archive ngrok.zip -DestinationPath .
 
     # -----------------------------
