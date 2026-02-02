@@ -1,4 +1,4 @@
-name: Windows UltraVNC (ngrok)
+name: Windows UltraVNC (ngrok FIXED)
 
 on:
   workflow_dispatch:
@@ -12,26 +12,27 @@ jobs:
       NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
 
     steps:
-    - name: Download UltraVNC
+    - name: Download UltraVNC (DIRECT MSI)
       shell: powershell
       run: |
-        curl.exe -L -o ultravnc.exe https://uvnc.com/component/jdownloads/send/0/0/1/0.html
+        $ProgressPreference = 'SilentlyContinue'
+        curl.exe -L -o ultravnc.msi `
+          https://downloads.sourceforge.net/project/ultravnc/UltraVNC/1.4.3.0/UltraVNC_1_4_3_X64_Setup.msi
+        Write-Output "UltraVNC MSI downloaded"
 
     - name: Install UltraVNC Server (silent)
       shell: powershell
       run: |
-        Start-Process -Wait -FilePath .\ultravnc.exe -ArgumentList "/verysilent /loadinf=""C:\Program Files\uvnc bvba\UltraVNC\ultravnc.ini"""
+        msiexec /i ultravnc.msi /quiet /norestart ADDLOCAL=Server
 
-    - name: Set UltraVNC password (correct way)
+    - name: Set UltraVNC password
       shell: powershell
       run: |
-        $uvncPath = "C:\Program Files\uvnc bvba\UltraVNC"
-        & "$uvncPath\setpasswd.exe" 12345678
+        & "C:\Program Files\uvnc bvba\UltraVNC\setpasswd.exe" 12345678
 
-    - name: Enable clipboard + loopback
+    - name: Enable clipboard + access
       shell: powershell
       run: |
-        reg add "HKLM\SOFTWARE\uvnc bvba\UltraVNC" /v EnableFileTransfer /t REG_DWORD /d 1 /f
         reg add "HKLM\SOFTWARE\uvnc bvba\UltraVNC" /v EnableClipboard /t REG_DWORD /d 1 /f
         reg add "HKLM\SOFTWARE\uvnc bvba\UltraVNC" /v LoopbackOnly /t REG_DWORD /d 0 /f
 
@@ -51,20 +52,12 @@ jobs:
         curl.exe -L -o ngrok.zip https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip
         Expand-Archive ngrok.zip -DestinationPath .
 
-    - name: Verify ngrok token
-      shell: powershell
-      run: |
-        if ([string]::IsNullOrEmpty($Env:NGROK_AUTH_TOKEN)) {
-          Write-Error "NGROK_AUTH_TOKEN missing"
-          exit 1
-        }
-
     - name: Configure ngrok
       shell: powershell
       run: |
         .\ngrok.exe config add-authtoken "$Env:NGROK_AUTH_TOKEN"
 
-    - name: Start ngrok UltraVNC tunnel
+    - name: Start ngrok VNC tunnel
       shell: powershell
       run: |
         Start-Process -NoNewWindow -FilePath ".\ngrok.exe" -ArgumentList "tcp 5900"
