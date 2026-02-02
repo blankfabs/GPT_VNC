@@ -1,4 +1,4 @@
-name: UltraVNC Windows (FINAL FIX)
+name: UltraVNC via ngrok (Windows)
 
 on:
   workflow_dispatch:
@@ -8,64 +8,95 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 360
 
-    env:
-      NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
-
     steps:
+    - name: Set up job
+      run: echo "Starting UltraVNC workflow"
+
+    # -----------------------------
+    # Download UltraVNC FULL MSI
+    # -----------------------------
     - name: Download UltraVNC (FULL MSI)
       shell: powershell
       run: |
-        $ProgressPreference = 'SilentlyContinue'
-        curl.exe -L -o ultravnc.msi `
-          https://downloads.sourceforge.net/project/ultravnc/UltraVNC/1.4.3.0/UltraVNC_1_4_3_X64_Setup.msi
+        Invoke-WebRequest `
+          -Uri "https://www.uvnc.com/component/jdownloads/send/0-/470-ultravnc-1-4-3-0-x64-setup.html" `
+          -OutFile ultravnc.msi
 
+    # -----------------------------
+    # Install UltraVNC
+    # -----------------------------
     - name: Install UltraVNC (FULL)
       shell: powershell
       run: |
         msiexec /i ultravnc.msi /quiet /norestart
 
-    - name: Set UltraVNC password (SAFE)
+    # -----------------------------
+    # Set VNC password (CORRECT WAY)
+    # -----------------------------
+    - name: Set UltraVNC password
       shell: powershell
       run: |
-        $exe = Get-ChildItem "C:\Program Files" -Recurse -Filter setpasswd.exe -ErrorAction SilentlyContinue | Select-Object -First 1
-        if (-not $exe) { throw "setpasswd.exe not found" }
-        & $exe.FullName 12345678
+        reg add "HKLM\SOFTWARE\uvnc bvba\UltraVNC" /v passwd  /t REG_BINARY /d 3132333435363738 /f
+        reg add "HKLM\SOFTWARE\uvnc bvba\UltraVNC" /v passwd2 /t REG_BINARY /d 3132333435363738 /f
+        reg add "HKLM\SOFTWARE\uvnc bvba\UltraVNC" /v AuthRequired /t REG_DWORD /d 1 /f
+        Write-Host "VNC password set (password = 12345678)"
 
-    - name: Enable clipboard + external access
+    # -----------------------------
+    # Enable clipboard + remote access
+    # -----------------------------
+    - name: Enable clipboard & access
       shell: powershell
       run: |
+        reg add "HKLM\SOFTWARE\uvnc bvba\UltraVNC" /v EnableFileTransfer /t REG_DWORD /d 1 /f
         reg add "HKLM\SOFTWARE\uvnc bvba\UltraVNC" /v EnableClipboard /t REG_DWORD /d 1 /f
-        reg add "HKLM\SOFTWARE\uvnc bvba\UltraVNC" /v LoopbackOnly /t REG_DWORD /d 0 /f
 
+    # -----------------------------
+    # Allow VNC through firewall
+    # -----------------------------
     - name: Allow VNC through firewall
       shell: powershell
       run: |
-        netsh advfirewall firewall add rule name="UltraVNC 5900" dir=in action=allow protocol=TCP localport=5900
+        netsh advfirewall firewall add rule name="UltraVNC" dir=in action=allow protocol=TCP localport=5900
 
+    # -----------------------------
+    # Start UltraVNC service
+    # -----------------------------
     - name: Start UltraVNC service
       shell: powershell
       run: |
-        Start-Service uvnc_service
+        net start uvnc_service || net start uvnc_server
 
+    # -----------------------------
+    # Download ngrok
+    # -----------------------------
     - name: Download ngrok
       shell: powershell
       run: |
-        curl.exe -L -o ngrok.zip https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip
+        Invoke-WebRequest https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip
         Expand-Archive ngrok.zip -DestinationPath .
 
+    # -----------------------------
+    # Configure ngrok
+    # -----------------------------
     - name: Configure ngrok
       shell: powershell
+      env:
+        NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
       run: |
-        .\ngrok.exe config add-authtoken "$Env:NGROK_AUTH_TOKEN"
+        .\ngrok.exe config add-authtoken $Env:NGROK_AUTH_TOKEN
 
-    - name: Start ngrok TCP tunnel
+    # -----------------------------
+    # Start ngrok TCP tunnel
+    # -----------------------------
+    - name: Start ngrok VNC tunnel
       shell: powershell
       run: |
         Start-Process -NoNewWindow -FilePath ".\ngrok.exe" -ArgumentList "tcp 5900"
-        Start-Sleep 10
-        Invoke-RestMethod http://127.0.0.1:4040/api/tunnels
 
+    # -----------------------------
+    # Keep session alive
+    # -----------------------------
     - name: Keep session alive
       shell: powershell
       run: |
-        while ($true) { Start-Sleep 300 }
+        while ($true) { Start-Sleep -Seconds 300 }
